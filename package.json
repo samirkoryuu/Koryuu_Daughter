@@ -1,0 +1,30 @@
+{
+  "name": "koryuu-discord-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:gateway": "tsx watch src/gateway.ts",
+    "deploy": "wrangler deploy",
+    "register": "tsx src/register-commands.ts",
+    "register:linked-role": "tsx src/register-linked-role-metadata.ts",
+    "start:gateway": "tsx src/gateway.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-sqlite --import tsx --test tests/*.test.ts",
+    "import:sqlite": "node --experimental-sqlite --import tsx src/import-sqlite.ts"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.40.0"
+  }
+}

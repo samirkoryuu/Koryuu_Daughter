@@ -1,0 +1,17 @@
+[Unit]
+Description=Koryuu Discord Gateway
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=koryuu
+Group=koryuu
+WorkingDirectory=/opt/koryuu/current
+EnvironmentFile=/etc/koryuu-gateway.env
+ExecStart=/usr/bin/npm run start:gateway
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

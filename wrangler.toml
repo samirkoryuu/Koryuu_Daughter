@@ -1,0 +1,22 @@
+name = "koryuu-api"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+
+[observability]
+enabled = true
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+LILITH_USER_ID = "1331229454134935633"
+ASTERION_USER_ID = "556102951039533073"
+DISCORD_PUBLIC_KEY = "b8df892ffde0c96936f9f79a57b137258cec52479b3f846b9678ea06292a6c3c"
+GROQ_MODEL = "openai/gpt-oss-120b"
+ARCHIVE_GUILD_ID = "1566471029562540102"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "koryuu"
+database_id = "f2caec96-6bda-4a45-b2cd-328e52c36b17"
+migrations_dir = "migrations"

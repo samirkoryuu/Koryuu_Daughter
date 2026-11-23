@@ -1,0 +1,102 @@
+name: Test and deploy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply koryuu --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy Cloudflare Worker
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.ORACLE_VM_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.ORACLE_VM_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Package Gateway release
+        run: |
+          tar \
+            --exclude='./.git' \
+            --exclude='./node_modules' \
+            --exclude='./.env' \
+            --exclude='./.dev.vars' \
+            --exclude='./.wrangler' \
+            --exclude='./data' \
+            -czf "/tmp/koryuu-${GITHUB_SHA}.tar.gz" .
+
+      - name: Deploy Gateway to Oracle VM
+        env:
+          ORACLE_VM_HOST: ${{ secrets.ORACLE_VM_HOST }}
+          ORACLE_VM_USER: ${{ secrets.ORACLE_VM_USER }}
+        run: |
+          archive="/tmp/koryuu-${GITHUB_SHA}.tar.gz"
+          remote_archive="/tmp/koryuu-${GITHUB_SHA}.tar.gz"
+          scp -i "$HOME/.ssh/id_ed25519" \
+            -o StrictHostKeyChecking=yes \
+            "$archive" "$ORACLE_VM_USER@$ORACLE_VM_HOST:$remote_archive"
+          ssh -i "$HOME/.ssh/id_ed25519" \
+            -o StrictHostKeyChecking=yes \
+            "$ORACLE_VM_USER@$ORACLE_VM_HOST" \
+            "sudo /usr/local/sbin/koryuu-deploy '$remote_archive' '$GITHUB_SHA'"
