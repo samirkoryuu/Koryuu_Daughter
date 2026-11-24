@@ -23,6 +23,7 @@ import {
   storeImage
 } from "./gateway-api.js";
 import { config } from "./config.js";
+import { safeReply } from "./discord-replies.js";
 
 const client = new Client({
   intents: [
@@ -33,6 +34,17 @@ const client = new Client({
     GatewayIntentBits.MessageContent
   ],
   partials: [Partials.Channel, Partials.Message]
+});
+
+process.on("unhandledRejection", reason => {
+  console.error("Unhandled promise rejection:", reason);
+});
+process.on("uncaughtException", error => {
+  console.error("Unhandled process exception:", error);
+});
+
+client.on(Events.Error, error => {
+  console.error("Discord gateway client error:", error);
 });
 
 client.once(Events.ClientReady, ready => {
@@ -222,12 +234,12 @@ client.on(Events.MessageCreate, async message => {
         let chunk = "";
         for (const line of lines) {
           if (chunk && chunk.length + line.length + 1 > 1900) {
-            await message.reply({ content: chunk, allowedMentions: { parse: [] } });
+            await safeReply(message, { content: chunk, allowedMentions: { parse: [] } });
             chunk = "";
           }
           chunk = chunk ? `${chunk}\n${line}` : line;
         }
-        if (chunk) await message.reply({ content: chunk, allowedMentions: { parse: [] } });
+        if (chunk) await safeReply(message, { content: chunk, allowedMentions: { parse: [] } });
       }
       if (afk.clearedStatus) {
         try {
@@ -267,7 +279,7 @@ client.on(Events.MessageCreate, async message => {
     .replace(new RegExp(`<@!?${client.user?.id ?? "0"}>`, "g"), "")
     .trim();
   if (!cleanText && message.attachments.size === 0) {
-    await message.reply("Koryuu is listening. Tell me what you need.");
+    await safeReply(message, "Koryuu is listening. Tell me what you need.");
     return;
   }
 
@@ -301,14 +313,14 @@ client.on(Events.MessageCreate, async message => {
           files,
           allowedMentions: { parse: [] }
         });
-        await message.reply("Sent that in a DM, as requested.");
+        await safeReply(message, "Sent that in a DM, as requested.");
       } catch (error) {
         console.error("Could not deliver the requested private response by DM:", error);
-        await message.reply("I couldn't send that DM. Please enable DMs from this server and try again.");
+        await safeReply(message, "I couldn't send that DM. Please enable DMs from this server and try again.");
       }
       return;
     }
-    await message.reply({
+    await safeReply(message, {
       content: result.reply.slice(0, 1900),
       components,
       files,
@@ -316,7 +328,7 @@ client.on(Events.MessageCreate, async message => {
     });
   } catch (error) {
     console.error("Gateway chat failed:", error);
-    await message.reply("A system error occurred. No operation was confirmed.");
+    await safeReply(message, "A system error occurred. No operation was confirmed.");
   }
 });
 
@@ -336,11 +348,15 @@ client.on(Events.InteractionCreate, async interaction => {
     console.error("Gateway action confirmation failed:", error);
     const message = error instanceof Error ? error.message : "The action failed.";
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: `**[ SYSTEM DENIED ]** ${message}`, ephemeral: true });
+      await interaction.followUp({ content: `**[ SYSTEM DENIED ]** ${message}`, ephemeral: true })
+        .catch(followUpError => console.error("Could not report the interaction failure:", followUpError));
     } else {
-      await interaction.reply({ content: `**[ SYSTEM DENIED ]** ${message}`, ephemeral: true });
+      await interaction.reply({ content: `**[ SYSTEM DENIED ]** ${message}`, ephemeral: true })
+        .catch(replyError => console.error("Could not report the interaction failure:", replyError));
     }
   }
 });
 
-client.login(config.discordToken);
+client.login(config.discordToken).catch(error => {
+  console.error("Could not connect to Discord:", error);
+});
